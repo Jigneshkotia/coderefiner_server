@@ -1,5 +1,6 @@
 import { AnalysisRun, PathStatus, Suggestion } from '../models/index.js';
 import { deriveModeMetrics, fileSizeFactor, filterSuggestionsForPath, folderSizeFactor, getSubtreeFileCount, normalizePath, resolveFileLineCount, } from './pathScoring.js';
+import { suggestionFilePath } from '../utils/parseSuggestionLocation.js';
 function parseMode(raw) {
     return raw === 'runtime' ? 'runtime' : 'compile';
 }
@@ -22,6 +23,8 @@ function modeFields(mode) {
     };
 }
 function toIngestSuggestion(s) {
+    const location = String(s.location ?? '');
+    const filePath = s.filePath ?? suggestionFilePath(location);
     return {
         id: String(s.externalId ?? s.id ?? ''),
         type: s.type,
@@ -31,7 +34,8 @@ function toIngestSuggestion(s) {
         problem: String(s.problem ?? ''),
         why: String(s.why ?? ''),
         suggestion: String(s.suggestion ?? ''),
-        location: String(s.location ?? ''),
+        location: filePath ?? location,
+        filePath,
         action: String(s.action ?? ''),
         pageUrl: s.pageUrl,
         modulePath: s.modulePath,
@@ -44,10 +48,16 @@ async function fetchSuggestionsForPath(repoKey, targetPath, pathType, mode) {
     const type = mode === 'compile' ? 'compile-time' : 'runtime';
     const query = { repoKey, type };
     if (pathType === 'file') {
-        query.location = { $regex: fp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') };
+        query.$or = [
+            { filePath: fp },
+            { location: fp },
+        ];
     }
     else if (fp !== '.') {
-        query.location = { $regex: `^${escaped}` };
+        query.$or = [
+            { filePath: { $regex: `^${escaped}` } },
+            { location: { $regex: `^${escaped}` } },
+        ];
     }
     const rows = await Suggestion.find(query).sort({ ingestedAt: -1 }).limit(100).lean();
     const ingest = rows.map((r) => toIngestSuggestion(r));

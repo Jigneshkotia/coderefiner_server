@@ -1,4 +1,5 @@
 import { RepoTree } from '../models/index.js';
+import { normalizeRepoFilePath, suggestionFilePath } from '../utils/parseSuggestionLocation.js';
 const WEIGHTS = { critical: 3, moderate: 2, minimal: 1 };
 export const REFERENCE_LOC = 200;
 export const MIN_FILE_FACTOR = 0.25;
@@ -6,7 +7,7 @@ export const REFERENCE_FILE_COUNT = 10;
 export const MIN_FOLDER_FACTOR = 0.3;
 export const PENALTY_MULTIPLIER = 5;
 export function normalizePath(p) {
-    return p.replace(/\\/g, '/').replace(/^\.\//, '') || '.';
+    return normalizeRepoFilePath(p);
 }
 export function emptyCounts() {
     return { critical: 0, moderate: 0, minimal: 0 };
@@ -70,8 +71,8 @@ export function statusFromCounts(counts, wasAnalyzed) {
 function suggestionTypeForMode(mode) {
     return mode === 'compile' ? 'compile-time' : 'runtime';
 }
-function locationMatchesPath(location, targetPath, pathType) {
-    const loc = normalizePath(location);
+function locationMatchesPath(location, targetPath, pathType, filePath) {
+    const loc = normalizePath(suggestionFilePath(location, filePath) ?? location);
     const tp = normalizePath(targetPath);
     if (pathType === 'file') {
         return loc === tp || loc.endsWith(`/${tp}`) || tp.endsWith(loc);
@@ -85,7 +86,7 @@ export function filterSuggestionsForPath(suggestions, targetPath, pathType, mode
     return suggestions.filter((s) => {
         if (s.type !== type)
             return false;
-        return locationMatchesPath(s.location ?? '', targetPath, pathType);
+        return locationMatchesPath(s.location ?? '', targetPath, pathType, s.filePath);
     });
 }
 export function deriveModeMetrics(suggestions, targetPath, pathType, mode, wasAnalyzed, sizeFactor = 1) {

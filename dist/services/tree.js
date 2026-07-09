@@ -25,7 +25,7 @@ export async function getRepoTreeData(repoKey) {
         };
         fileStatusMap[s.path] = combined;
     }
-    const statusPaths = statuses.map((s) => s.path);
+    const statusPaths = statuses.map((s) => normalizePath(s.path));
     const files = tree
         ? [...new Set([...tree.files.map(normalizePath), ...statusPaths])].sort()
         : statusPaths;

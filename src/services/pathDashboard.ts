@@ -11,6 +11,7 @@ import {
 } from './pathScoring.js';
 import type { AnalysisStatus } from './pathStatus.js';
 import type { IngestSuggestion } from '../models/index.js';
+import { suggestionFilePath } from '../utils/parseSuggestionLocation.js';
 
 function parseMode(raw: string | undefined): DashboardMode {
   return raw === 'runtime' ? 'runtime' : 'compile';
@@ -36,6 +37,9 @@ function modeFields(mode: DashboardMode) {
 }
 
 function toIngestSuggestion(s: Record<string, unknown>): IngestSuggestion {
+  const location = String(s.location ?? '');
+  const filePath = (s.filePath as string | undefined) ?? suggestionFilePath(location);
+
   return {
     id: String(s.externalId ?? s.id ?? ''),
     type: s.type as 'compile-time' | 'runtime',
@@ -45,7 +49,8 @@ function toIngestSuggestion(s: Record<string, unknown>): IngestSuggestion {
     problem: String(s.problem ?? ''),
     why: String(s.why ?? ''),
     suggestion: String(s.suggestion ?? ''),
-    location: String(s.location ?? ''),
+    location: filePath ?? location,
+    filePath,
     action: String(s.action ?? ''),
     pageUrl: s.pageUrl as string | undefined,
     modulePath: s.modulePath as string | undefined,
@@ -65,9 +70,15 @@ async function fetchSuggestionsForPath(
 
   const query: Record<string, unknown> = { repoKey, type };
   if (pathType === 'file') {
-    query.location = { $regex: fp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') };
+    query.$or = [
+      { filePath: fp },
+      { location: fp },
+    ];
   } else if (fp !== '.') {
-    query.location = { $regex: `^${escaped}` };
+    query.$or = [
+      { filePath: { $regex: `^${escaped}` } },
+      { location: { $regex: `^${escaped}` } },
+    ];
   }
 
   const rows = await Suggestion.find(query).sort({ ingestedAt: -1 }).limit(100).lean();

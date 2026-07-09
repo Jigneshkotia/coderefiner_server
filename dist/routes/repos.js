@@ -1,5 +1,8 @@
 import { Router } from 'express';
 import { AnalysisRun, ModuleSnapshot, PageSnapshot, Repo, Suggestion, } from '../models/index.js';
+import { requireAdminKey } from '../middleware/requireAdminKey.js';
+import { deleteRepo } from '../services/admin/deleteRepo.js';
+import { removePathAnalytics } from '../services/admin/removePathAnalytics.js';
 import { getRepoTreeData } from '../services/tree.js';
 import { getFileDashboard, getFolderDashboard } from '../services/pathDashboard.js';
 import { getPathHistory } from '../services/pathHistory.js';
@@ -165,5 +168,39 @@ router.get('/:repoKey/runs/:runId', async (req, res) => {
 router.get('/:repoKey/insights', async (req, res) => {
     const repoKey = decodeURIComponent(req.params.repoKey);
     res.json(await getInsights(repoKey));
+});
+router.delete('/:repoKey/analytics', requireAdminKey, async (req, res) => {
+    try {
+        const repoKey = decodeURIComponent(String(req.params.repoKey));
+        const pathValue = String(req.body?.path ?? '');
+        const pathType = req.body?.pathType;
+        if (!pathValue) {
+            res.status(400).json({ error: 'path is required' });
+            return;
+        }
+        if (pathType !== 'file' && pathType !== 'directory') {
+            res.status(400).json({ error: 'pathType must be "file" or "directory"' });
+            return;
+        }
+        const result = await removePathAnalytics({ repoKey, targetPath: pathValue, pathType });
+        res.json(result);
+    }
+    catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to remove analytics';
+        const status = message === 'Repo not found' ? 404 : 400;
+        res.status(status).json({ error: message });
+    }
+});
+router.delete('/:repoKey', requireAdminKey, async (req, res) => {
+    try {
+        const repoKey = decodeURIComponent(String(req.params.repoKey));
+        await deleteRepo(repoKey);
+        res.status(204).send();
+    }
+    catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to delete repo';
+        const status = message === 'Repo not found' ? 404 : 400;
+        res.status(status).json({ error: message });
+    }
 });
 export default router;

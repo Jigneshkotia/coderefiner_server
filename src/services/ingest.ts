@@ -11,6 +11,7 @@ import { extractFromSuggestion, urlHash } from './metrics.js';
 import { appendPathHistory } from './pathHistory.js';
 import { deriveAnalysisScope, upsertPathStatuses } from './pathStatus.js';
 import { normalizePath } from './pathScoring.js';
+import { parseSuggestionLocation, suggestionFilePath } from '../utils/parseSuggestionLocation.js';
 import {
   computeParamScores,
   moduleHealthScore,
@@ -97,10 +98,11 @@ function buildSummary(suggestions: IngestSuggestion[], moduleCount: number, page
 function suggestionsForModule(suggestions: IngestSuggestion[], modulePath: string, files: string[]): IngestSuggestion[] {
   return suggestions.filter((s) => {
     if (s.type !== 'compile-time') return false;
-    const loc = s.location ?? s.modulePath ?? '';
-    const dir = path.posix.dirname(loc.replace(/\\/g, '/')) || '.';
+    const filePath = suggestionFilePath(s.location, s.filePath);
+    if (!filePath) return false;
+    const dir = path.posix.dirname(filePath) || '.';
     if (dir === modulePath) return true;
-    return files.some((f) => loc.includes(f) || f.includes(loc));
+    return files.some((f) => filePath === f || filePath.endsWith(`/${f}`) || f.endsWith(filePath));
   });
 }
 
@@ -118,7 +120,10 @@ function collectIngestFilePaths(payload: IngestPayload): string[] {
   for (const bucket of payload.moduleBuckets ?? []) {
     for (const f of bucket.files) add(f);
   }
-  for (const s of payload.suggestions ?? []) add(s.location);
+  for (const s of payload.suggestions ?? []) {
+    const filePath = suggestionFilePath(s.location, s.filePath);
+    if (filePath) add(filePath);
+  }
 
   return [...paths].filter((p) => p !== '.');
 }
@@ -243,28 +248,36 @@ export async function ingestAnalysis(payload: IngestPayload): Promise<{ runId: s
 
   if (suggestions.length > 0) {
     await Suggestion.insertMany(
-      suggestions.map((s) => ({
-        runId: run.runId,
-        repoKey,
-        externalId: s.id,
-        type: s.type,
-        parameter: s.parameter,
-        importance: s.importance,
-        title: s.title,
-        problem: s.problem,
-        why: s.why,
-        suggestion: s.suggestion,
-        location: s.location,
-        action: s.action,
-        beforeCode: s.beforeCode?.slice(0, 2000),
-        afterCode: s.afterCode?.slice(0, 2000),
-        verification: s.verification,
-        diagram: s.diagram,
-        extractedMetrics: s.extractedMetrics ?? extractFromSuggestion(s as Parameters<typeof extractFromSuggestion>[0]),
-        modulePath: (s.modulePath ?? path.posix.dirname((s.location ?? '').replace(/\\/g, '/'))) || undefined,
-        pageUrl: s.pageUrl,
-        status: 'open',
-      })),
+      suggestions.map((s) => {
+        const repoFilePath = suggestionFilePath(s.location, s.filePath);
+        const parsedLine = s.line ?? parseSuggestionLocation(s.location)?.line;
+
+        return {
+          runId: run.runId,
+          repoKey,
+          externalId: s.id,
+          type: s.type,
+          parameter: s.parameter,
+          importance: s.importance,
+          title: s.title,
+          problem: s.problem,
+          why: s.why,
+          suggestion: s.suggestion,
+          location: repoFilePath ?? s.location,
+          filePath: repoFilePath,
+          line: parsedLine,
+          action: s.action,
+          beforeCode: s.beforeCode?.slice(0, 2000),
+          afterCode: s.afterCode?.slice(0, 2000),
+          verification: s.verification,
+          diagram: s.diagram,
+          extractedMetrics: s.extractedMetrics ?? extractFromSuggestion(s as Parameters<typeof extractFromSuggestion>[0]),
+          modulePath: (s.modulePath
+            ?? (repoFilePath ? path.posix.dirname(repoFilePath) || undefined : undefined)),
+          pageUrl: s.pageUrl,
+          status: 'open',
+        };
+      }),
     );
   }
 

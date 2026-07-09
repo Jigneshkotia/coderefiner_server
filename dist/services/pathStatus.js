@@ -7,7 +7,7 @@ const STATUS_RANK = {
 export function worstStatus(a, b) {
     return STATUS_RANK[a] >= STATUS_RANK[b] ? a : b;
 }
-function getAncestorPaths(filePath) {
+export function getAncestorPaths(filePath) {
     const ancestors = ['.'];
     let dir = path.posix.dirname(normalizePath(filePath));
     while (dir && dir !== '.') {
@@ -74,15 +74,20 @@ async function aggregateFolderFromFiles(repoKey, folderPath) {
         subtreeFileCount,
     };
 }
-async function refreshFolderAggregate(repoKey, folderPath) {
+export async function refreshFolderAggregate(repoKey, folderPath) {
     const metrics = await aggregateFolderFromFiles(repoKey, folderPath);
+    const fp = normalizePath(folderPath);
     const hasData = metrics.analysisStatus !== 'none';
-    if (!hasData && folderPath !== '.')
+    if (!hasData) {
+        if (fp !== '.') {
+            await PathStatus.deleteOne({ repoKey, path: fp, pathType: 'directory' });
+        }
         return;
-    await PathStatus.findOneAndUpdate({ repoKey, path: normalizePath(folderPath) }, {
+    }
+    await PathStatus.findOneAndUpdate({ repoKey, path: fp }, {
         $set: {
             repoKey,
-            path: normalizePath(folderPath),
+            path: fp,
             pathType: 'directory',
             ...metrics,
         },

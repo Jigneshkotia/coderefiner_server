@@ -76,6 +76,8 @@ const suggestionSchema = new Schema({
     why: String,
     suggestion: String,
     location: String,
+    filePath: String,
+    line: Number,
     action: String,
     beforeCode: String,
     afterCode: String,

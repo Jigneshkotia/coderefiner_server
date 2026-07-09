@@ -15,6 +15,8 @@ const suggestionSchema = z.object({
   why: z.string(),
   suggestion: z.string(),
   location: z.string(),
+  filePath: z.string().optional(),
+  line: z.number().optional(),
   action: z.string(),
   beforeCode: z.string().optional(),
   afterCode: z.string().optional(),

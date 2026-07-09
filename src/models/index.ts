@@ -81,6 +81,8 @@ const suggestionSchema = new Schema({
   why: String,
   suggestion: String,
   location: String,
+  filePath: String,
+  line: Number,
   action: String,
   beforeCode: String,
   afterCode: String,
@@ -124,6 +126,8 @@ export type IngestSuggestion = {
   why: string;
   suggestion: string;
   location: string;
+  filePath?: string;
+  line?: number;
   action: string;
   beforeCode?: string;
   afterCode?: string;
