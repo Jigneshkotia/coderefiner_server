@@ -5,6 +5,7 @@ import { connectDb } from './db.js';
 import { warnIfAdminKeyMissing } from './middleware/requireAdminKey.js';
 import ingestRoutes from './routes/ingest.js';
 import repoRoutes from './routes/repos.js';
+import runtimeRoutes from './routes/runtime.js';
 
 const PORT = Number(process.env.PORT ?? 4000);
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -27,6 +28,7 @@ app.get('/api/v1/health', (_req, res) => {
 
 app.use('/api/v1/ingest', ingestRoutes);
 app.use('/api/v1/repos', repoRoutes);
+app.use('/api/v1/runtime', runtimeRoutes);
 
 async function main() {
   await connectDb(MONGODB_URI!);

@@ -207,3 +207,90 @@ pathAnalysisHistorySchema.index({ repoKey: 1, path: 1, analyzedAt: 1 });
 export const RepoTree = mongoose.model('RepoTree', repoTreeSchema);
 export const PathStatus = mongoose.model('PathStatus', pathStatusSchema);
 export const PathAnalysisHistory = mongoose.model('PathAnalysisHistory', pathAnalysisHistorySchema);
+
+// ── Scheduled runtime analytics (coderefiner-runtime CLI) ────────────────────
+// Stored in dedicated collections, fully separated from the extension's
+// daily-analysis data above.
+
+const runtimeAppSchema = new Schema({
+  appKey: { type: String, required: true, unique: true },
+  displayName: { type: String, required: true },
+  appPath: String,
+  baseUrl: String,
+  routerType: String,
+  totalRuns: { type: Number, default: 0 },
+  lastIngestedAt: Date,
+  createdAt: { type: Date, default: Date.now },
+});
+
+const runtimeRunSchema = new Schema({
+  runId: { type: String, required: true, unique: true },
+  appKey: { type: String, required: true, index: true },
+  baseUrl: String,
+  routerType: String,
+  formFactor: String,
+  startedAt: Date,
+  completedAt: { type: Date, index: true },
+  summary: Schema.Types.Mixed,
+  aiRan: Boolean,
+  aiSummary: String,
+  blockedAudits: [Schema.Types.Mixed],
+  skippedRoutes: [Schema.Types.Mixed],
+});
+
+const runtimePageSnapshotSchema = new Schema({
+  runId: { type: String, required: true, index: true },
+  appKey: { type: String, required: true, index: true },
+  url: { type: String, required: true },
+  route: String,
+  urlHash: String,
+  source: String,
+  status: { type: String, enum: ['healthy', 'flagged'] },
+  severity: { type: String, enum: ['Critical', 'Moderate', 'Minimal', null] },
+  violations: [Schema.Types.Mixed],
+  violationCounts: Schema.Types.Mixed,
+  suggestionCount: { type: Number, default: 0 },
+  webVitals: Schema.Types.Mixed,
+  cwvRatings: Schema.Types.Mixed,
+  runtime: Schema.Types.Mixed,
+  healthScore: Number,
+  scanError: String,
+  durationMs: Number,
+  ingestedAt: { type: Date, default: Date.now },
+});
+
+const runtimeSuggestionSchema = new Schema({
+  runId: { type: String, required: true, index: true },
+  appKey: { type: String, required: true, index: true },
+  externalId: { type: String, required: true },
+  type: { type: String, enum: ['compile-time', 'runtime'] },
+  parameter: String,
+  importance: { type: String, enum: ['critical', 'moderate', 'minimal'] },
+  title: String,
+  problem: String,
+  why: String,
+  suggestion: String,
+  location: String,
+  filePath: String,
+  line: Number,
+  action: String,
+  beforeCode: String,
+  afterCode: String,
+  verification: Schema.Types.Mixed,
+  pageUrl: String,
+  urlHash: String,
+  expectedImpact: String,
+  confidence: String,
+  status: { type: String, default: 'open' },
+  ingestedAt: { type: Date, default: Date.now },
+});
+
+runtimeRunSchema.index({ appKey: 1, completedAt: -1 });
+runtimePageSnapshotSchema.index({ appKey: 1, url: 1 });
+runtimePageSnapshotSchema.index({ appKey: 1, urlHash: 1 });
+runtimeSuggestionSchema.index({ appKey: 1, urlHash: 1 });
+
+export const RuntimeApp = mongoose.model('RuntimeApp', runtimeAppSchema);
+export const RuntimeRun = mongoose.model('RuntimeRun', runtimeRunSchema);
+export const RuntimePageSnapshot = mongoose.model('RuntimePageSnapshot', runtimePageSnapshotSchema);
+export const RuntimeSuggestion = mongoose.model('RuntimeSuggestion', runtimeSuggestionSchema);

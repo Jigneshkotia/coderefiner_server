@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { ingestAnalysis } from '../services/ingest.js';
-import { AnalysisRun, WorkflowEvent } from '../models/index.js';
+import { ingestRuntimeAnalysis } from '../services/runtimeIngest.js';
+import { AnalysisRun, RuntimeRun, WorkflowEvent } from '../models/index.js';
 
 const router = Router();
 
@@ -83,6 +84,89 @@ router.post('/analysis', async (req, res) => {
     res.status(201).json(result);
   } catch (err) {
     console.error('Ingest error:', err);
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Invalid payload' });
+  }
+});
+
+const runtimeViolationSchema = z.object({
+  id: z.string(),
+  severity: z.enum(['Critical', 'Moderate', 'Minimal']),
+  metric: z.string().optional(),
+  actual: z.unknown().optional(),
+  threshold: z.unknown().optional(),
+  message: z.string().optional(),
+});
+
+const runtimeSuggestionSchema = z.object({
+  id: z.string(),
+  type: z.enum(['compile-time', 'runtime']),
+  parameter: z.string().optional(),
+  importance: z.enum(['critical', 'moderate', 'minimal']),
+  title: z.string(),
+  problem: z.string(),
+  why: z.string(),
+  suggestion: z.string(),
+  location: z.string(),
+  filePath: z.string().optional(),
+  line: z.number().optional(),
+  action: z.string(),
+  beforeCode: z.string().optional(),
+  afterCode: z.string().optional(),
+  verification: z.object({ method: z.string(), finding: z.string() }).optional(),
+  pageUrl: z.string().optional(),
+  expectedImpact: z.string().optional(),
+  confidence: z.string().optional(),
+});
+
+export const runtimeIngestSchema = z.object({
+  appKey: z.string().min(1),
+  appPath: z.string().optional(),
+  baseUrl: z.string().optional(),
+  routerType: z.string().optional(),
+  run: z.object({
+    runId: z.string(),
+    startedAt: z.string().optional(),
+    completedAt: z.string().optional(),
+    formFactor: z.string().optional(),
+    summary: z.record(z.unknown()).optional(),
+    aiRan: z.boolean().optional(),
+    aiSummary: z.string().optional(),
+    blockedAudits: z.array(z.unknown()).optional(),
+    skippedRoutes: z.array(z.unknown()).optional(),
+  }),
+  pages: z.array(z.object({
+    url: z.string(),
+    route: z.string().optional(),
+    source: z.string().optional(),
+    status: z.enum(['healthy', 'flagged']),
+    severity: z.enum(['Critical', 'Moderate', 'Minimal']).nullish(),
+    violations: z.array(runtimeViolationSchema),
+    lighthouse: z.object({
+      scores: z.record(z.number().nullable()).optional(),
+      metrics: z.record(z.number().nullable()).optional(),
+    }).nullish(),
+    runtime: z.record(z.unknown()).nullish(),
+    scanError: z.string().optional(),
+    durationMs: z.number().optional(),
+  })),
+  suggestions: z.array(runtimeSuggestionSchema),
+});
+
+router.post('/runtime', async (req, res) => {
+  try {
+    const payload = runtimeIngestSchema.parse(req.body);
+    const existing = await RuntimeRun.findOne({ runId: payload.run.runId });
+    if (existing) {
+      res.status(409).json({ error: 'Duplicate runId' });
+      return;
+    }
+    const result = await ingestRuntimeAnalysis({
+      ...payload,
+      pages: payload.pages.map((p) => ({ ...p, severity: p.severity ?? undefined })),
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    console.error('Runtime ingest error:', err);
     res.status(400).json({ error: err instanceof Error ? err.message : 'Invalid payload' });
   }
 });
